@@ -9,7 +9,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v3
-            - uses: pnpm/action-setup@v2
+            - uses: npm/action-setup@v2
               with:
                   version: 7
             - uses: actions/setup-node@v3
@@ -17,5 +17,5 @@ jobs:
                   node-version: 16.x
                   cache: "pnpm"
 
-            - run: pnpm install
-            - run: pnpm run lint && pnpm run build
+            - run: npm install
+            - run: npm run lint && pnpm run build
