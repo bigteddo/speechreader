@@ -1,5 +1,0 @@
----
-'speechreader': minor
----
-
-nothing
