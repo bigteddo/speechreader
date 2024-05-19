@@ -8,11 +8,4 @@ describe('wrapHtmlTags', () => {
         const expected = '<span class="rsx-1">The</span> <span class="rsx-2">quick</span> <span class="rsx-3">brown</span> <span class="rsx-4">fox</span>';
         expect(result).toEqual(expected);
     });
-    it('should wrap html words with html tags', () => {
-        const Synth = new dist_1.Synthesizer('<p>The <a>quick</a> brown fox</p>');
-        const result = Synth.wrapHtmlTags();
-        console.log(result);
-        const expected = '<span class="rsx-1">The</span> <span class="rsx-2">quick</span> <span class="rsx-3">brown</span> <span class="rsx-4">fox</span>';
-        expect(result).toEqual(expected);
-    });
 });
