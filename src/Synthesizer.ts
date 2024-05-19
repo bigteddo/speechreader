@@ -1,4 +1,3 @@
-
 export class Synthesizer {
     private utter: any = null
     private timer: any
@@ -16,7 +15,9 @@ export class Synthesizer {
     }
 
     play() {
-        speechSynthesis.cancel()
+        if (speechSynthesis) {
+            speechSynthesis.cancel()
+        }
         this.utter = new SpeechSynthesisUtterance(this.text)
         this.utter.lang = 'en-US'
         this.utter.addEventListener(
@@ -48,13 +49,24 @@ export class Synthesizer {
     }
 
     pause() {
-        clearTimeout(this.timer)
-        speechSynthesis.pause()
+        if (speechSynthesis) {
+            clearTimeout(this.timer)
+            speechSynthesis.pause()
+        }
     }
 
     resume() {
-        speechSynthesis.resume()
-        this.timer = setTimeout(() => this.pauseResumeTimer(), 1000)
+        if (speechSynthesis) {
+            speechSynthesis.resume()
+            this.timer = setTimeout(() => this.pauseResumeTimer(), 1000)
+        }
+    }
+
+    stop() {
+        if (speechSynthesis) {
+            clearTimeout(this.timer)
+            speechSynthesis.cancel()
+        }
     }
 
     private stripHTML(html: string) {
