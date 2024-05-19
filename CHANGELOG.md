@@ -1,5 +1,11 @@
 # speechreader
 
+## 1.1.2
+
+### Patch Changes
+
+- cc779af: updates in ci/cd pipeline
+
 ## 1.1.1
 
 ### Patch Changes
