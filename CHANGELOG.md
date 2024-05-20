@@ -1,5 +1,11 @@
 # speechreader
 
+## 1.1.3
+
+### Patch Changes
+
+- 1931dc7: update readme and remove unused tests
+
 ## 1.1.2
 
 ### Patch Changes
