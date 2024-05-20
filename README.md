@@ -2,6 +2,7 @@
 
 speechreader use the SpeechSynthesisUtterance interface of the Web Speech API 
 and provider a ready to use wrapper class to start adding TTS functionality to your project.
+This lobrary is meant to be added on  PROJECT RUNNING ON A WEB BROWSER.
 
 ## Installation
 
