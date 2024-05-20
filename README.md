@@ -47,3 +47,8 @@ resume text reading
 ```js
  synthesizer.resume()
 ```
+
+stop text reading
+```js
+ synthesizer.stop()
+```
