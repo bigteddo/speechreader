@@ -2,7 +2,7 @@
 
 speechreader use the SpeechSynthesisUtterance interface of the Web Speech API 
 and provider a ready to use wrapper class to start adding TTS functionality to your project.
-This lobrary is meant to be added on  PROJECT RUNNING ON A WEB BROWSER.
+This library is meant to be added on  PROJECT RUNNING ON A WEB BROWSER.
 
 ## Installation
 
@@ -32,7 +32,7 @@ Use the Synthesizer to read HTML text
  synthesizer.play()
 ```
 
-Set speech synthesizer local
+Set speech synthesizer locale
 ```js
  const synthesizer = new Synthesizer('I am a little tea pot','en-US')
  synthesizer.play()
