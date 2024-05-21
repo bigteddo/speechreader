@@ -19,7 +19,7 @@ export class Synthesizer {
             speechSynthesis.cancel()
         }
         this.utter = new SpeechSynthesisUtterance(this.text)
-        this.utter.lang = 'en-US'
+        this.utter.lang =  this.locale
         this.utter.addEventListener(
             'end',
             () => {
@@ -27,25 +27,19 @@ export class Synthesizer {
             },
             { passive: true },
         )
-        //IMPORTANT!! Do not remove: Logging the object out fixes some onend firing issues.
-        console.log(this.utter.lang)
-        // Placing the speak invocation inside a callback fixes ordering and onend issues
         setTimeout(() => {
             speechSynthesis.speak(this.utter)
         }, 0)
 
-        this.timer = setTimeout(() => this.pauseResumeTimer(), 1000)
+        this.timer = setTimeout(() => this.pauseResumeTimer(), 10000)
     }
 
     private pauseResumeTimer() {
         speechSynthesis.pause()
-        //IMPORTANT!! Do not remove: Logging the object out fixes some onend firing issues.
-        console.log(this.utter.lang)
-        // Placing the speak invocation inside a callback fixes ordering and onend issues
         setTimeout(() => {
             speechSynthesis.resume()
         }, 0)
-        this.timer = setTimeout(() => this.pauseResumeTimer(), 1000)
+        this.timer = setTimeout(() => this.pauseResumeTimer(), 10000)
     }
 
     pause() {
