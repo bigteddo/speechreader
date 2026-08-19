@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>speechreader — Synthesizer test page</title>
+<style>
+    :root {
+        color-scheme: light dark;
+        --accent: #2563eb;
+        --ok: #16a34a;
+        --warn: #d97706;
+        --err: #dc2626;
+        --border: #cbd5e1;
+    }
+    * { box-sizing: border-box; }
+    body {
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 2rem;
+        max-width: 860px;
+        margin-inline: auto;
+        line-height: 1.5;
+    }
+    h1 { font-size: 1.5rem; }
+    h2 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+    label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+    textarea {
+        width: 100%;
+        min-height: 90px;
+        font: inherit;
+        font-family: ui-monospace, monospace;
+        padding: 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+    }
+    .row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; }
+    .row > div { flex: 1 1 200px; }
+    input[type="text"], select {
+        width: 100%;
+        padding: 0.4rem 0.5rem;
+        font: inherit;
+        border: 1px solid var(--border);
+    border-radius: 6px;
+}
+    .buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.75rem 0; }
+    button {
+        font: inherit;
+        font-weight: 600;
+        padding: 0.45rem 1rem;
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        background: var(--accent);
+        color: #fff;
+        cursor: pointer;
+    }
+    button.secondary {
+        background: transparent;
+        color: var(--accent);
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .status {
+        display: inline-block;
+        padding: 0.15rem 0.6rem;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        background: #64748b;
+        color: #fff;
+    }
+    .status.speaking { background: var(--ok); }
+    .status.paused { background: var(--warn); }
+    .status.error { background: var(--err); }
+    .status.idle { background: #64748b; }
+    #log {
+        font-family: ui-monospace, monospace;
+        font-size: 0.8rem;
+        background: rgba(100, 116, 139, 0.12);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0.5rem;
+        height: 160px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+    }
+    #wrapPreview {
+        font-family: ui-monospace, monospace;
+        font-size: 0.8rem;
+        background: rgba(100, 116, 139, 0.12);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0.5rem;
+        max-height: 140px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    #highlightPane {
+        font-size: 1.05rem;
+        line-height: 1.9;
+        background: rgba(100, 116, 139, 0.06);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0.75rem;
+        min-height: 3.2rem;
+    }
+    #highlightPane .rsx-highlight {
+        border-radius: 3px;
+        padding: 0 2px;
+        transition: background 0.05s ease;
+    }
+    .swatches { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .swatch {
+        position: relative;
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        border: 2px solid transparent;
+        cursor: pointer;
+        padding: 0;
+        outline-offset: 2px;
+    }
+    .swatch:focus-visible { box-shadow: 0 0 0 3px var(--accent); }
+    .swatch.selected { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+    .swatch span {
+        position: absolute;
+        inset: 0;
+        margin: auto;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.9);
+        opacity: 0;
+        transition: opacity 0.1s;
+    }
+    .swatch.selected span { opacity: 1; }
+    .hint { font-size: 0.8rem; opacity: 0.75; }
+    .unsupported {
+        background: var(--err);
+        color: #fff;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+</style>
+</head>
+<body>
+<h1>speechreader — Synthesizer test page</h1>
+
+
+<div id="unsupportedBanner" class="unsupported" hidden>
+    Web Speech API (speechSynthesis) is not available in this browser.
+</div>
+
+<h2>Input</h2>
+<label for="text">Text (plain text or HTML — HTML tags are stripped by the library)</label>
+<textarea id="text"></textarea>
+<div class="buttons">
+    <button class="secondary" id="samplePlain" type="button">Load plain text sample</button>
+    <button class="secondary" id="sampleHtml" type="button">Load HTML sample</button>
+    <button class="secondary" id="sampleLong" type="button">Load long text sample (keep-alive timer)</button>
+</div>
+
+<div class="row">
+    <div>
+        <label for="locale">Locale</label>
+        <input type="text" id="locale" list="locales" value="en-US" placeholder="en-US">
+        <datalist id="locales"></datalist>
+    </div>
+    <div>
+        <label for="voice">Voice (optional, sets locale)</label>
+        <select id="voice">
+            <option value="">— default —</option>
+        </select>
+    </div>
+    <div>
+        <label for="enableHighlight" style="display: inline-flex; gap: 0.4rem; align-items: center; font-weight: 400;">
+            <input type="checkbox" id="enableHighlight" style="width: auto;" checked>
+            word highlighting
+        </label>
+    </div>
+    <div>
+        <label for="estimateFallback" style="display: inline-flex; gap: 0.4rem; align-items: center; font-weight: 400;">
+            <input type="checkbox" id="estimateFallback" style="width: auto;">
+            estimate fallback (browsers without boundary events)
+        </label>
+    </div>
+</div>
+<p class="hint">Tip: pick a voice to see its locale applied, or type a locale directly (e.g. fr-FR, de-DE).</p>
+
+<h2>Controls <span id="status" class="status idle">idle</span></h2>
+<div class="buttons">
+    <button id="play" type="button">play()</button>
+    <button id="pause" type="button">pause()</button>
+    <button id="resume" type="button">resume()</button>
+    <button id="stop" type="button">stop()</button>
+    <button id="testBoundary" type="button" class="secondary">test boundary support</button>
+</div>
+<div class="row">
+    <div>
+        <label for="mode">Reading mode</label>
+        <select id="mode">
+            <option value="boundary">boundary — one utterance, word tracking via boundary events (Chrome/Edge on Win/Mac)</option>
+            <option value="chunks">chunks — one utterance per word, works in any browser (Firefox, Safari, Linux)</option>
+        </select>
+    </div>
+</div>
+<p class="hint">
+    If your browser does not fire <code>boundary</code> events (e.g. Chrome on Linux,
+    Firefox, Safari), the library detects this before it starts speaking and reads in
+    <code>chunks</code> mode so the highlight still moves — no restart, no manual
+    switching. Press <em>test boundary support</em> to see which events your browser
+    fires.
+</p>
+
+<h2>wrapHtmlTags() output</h2>
+<div id="wrapPreview">(call play() to generate)</div>
+
+<div id="highlightSection">
+<h2>Highlighted text (live) <span id="boundarySupport" class="status idle">boundary: —</span></h2>
+<p class="hint">
+    The <code>wrapHtmlTags()</code> output rendered by the page. The library's
+    <code>highlight()</code> toggles <code>rsx-highlight</code> on each word as
+    <code>boundary</code> events fire.
+</p>
+<div class="row" style="margin-bottom: 0.75rem;">
+    <div style="flex: 0 0 auto;">
+        <label id="colorLabel">Highlight color</label>
+        <div class="swatches" role="radiogroup" aria-labelledby="colorLabel" id="colorSwatches"></div>
+    </div>
+</div>
+<div id="highlightPane"></div>
+</div>
+
+<h2>speechSynthesis event log</h2>
+<p class="hint">
+    The library issues a pause/resume every 10s while speaking (keep-alive workaround for long
+    utterances in Chrome) — you should see it appear here as <code>pause</code>/<code>resume</code> pairs.
+</p>
+<div id="log"></div>
+
+<script type="module">
+    import { Synthesizer, HIGHLIGHT_PALETTE } from '../dist/index.mjs'
+
+    const $ = (id) => document.getElementById(id)
+    const textEl = $('text')
+    const localeEl = $('locale')
+    const voiceEl = $('voice')
+    const statusEl = $('status')
+    const logEl = $('log')
+    const wrapEl = $('wrapPreview')
+    const highlightPane = $('highlightPane')
+    const highlightSection = $('highlightSection')
+    const boundarySupportEl = $('boundarySupport')
+    const colorSwatchesEl = $('colorSwatches')
+
+    let highlightColor = 'blue'
+    function buildColorSwatches() {
+        colorSwatchesEl.innerHTML = ''
+        for (const [color, { bg }] of Object.entries(HIGHLIGHT_PALETTE)) {
+            const btn = document.createElement('button')
+            btn.type = 'button'
+            btn.className = 'swatch'
+            btn.style.background = bg
+            btn.dataset.color = color
+            btn.setAttribute('role', 'radio')
+            btn.setAttribute('aria-checked', String(color === highlightColor))
+            btn.setAttribute('aria-label', color)
+            btn.title = color
+            const mark = document.createElement('span')
+            btn.appendChild(mark)
+            btn.addEventListener('click', () => {
+                highlightColor = color
+                for (const b of colorSwatchesEl.querySelectorAll('.swatch')) {
+                    const selected = b.dataset.color === color
+                    b.classList.toggle('selected', selected)
+                    b.setAttribute('aria-checked', String(selected))
+                }
+            })
+            if (color === highlightColor) {
+                btn.classList.add('selected')
+            }
+            colorSwatchesEl.appendChild(btn)
+        }
+    }
+    buildColorSwatches()
+
+    $('enableHighlight').addEventListener('change', () => {
+        highlightSection.style.display = $('enableHighlight').checked ? '' : 'none'
+    })
+
+    if (!('speechSynthesis' in window)) {
+        $('unsupportedBanner').hidden = false
+    }
+
+    const PLAIN_SAMPLE = 'I am a little tea pot, short and stout. Here is some plain text to be read aloud by the synthesizer.'
+    const HTML_SAMPLE = '<html><body><h1>I am a little tea pot</h1><p>This paragraph contains <strong>bold</strong> and <em>italic</em> markup that the library must strip before speaking.</p><ul><li>First item</li><li>Second item</li></ul></body></html>'
+    const LONG_SAMPLE = 'This is a deliberately long text used to verify the keep-alive behavior. '.repeat(40)
+
+    textEl.value = PLAIN_SAMPLE
+    $('samplePlain').onclick = () => { textEl.value = PLAIN_SAMPLE }
+    $('sampleHtml').onclick = () => { textEl.value = HTML_SAMPLE }
+    $('sampleLong').onclick = () => { textEl.value = LONG_SAMPLE }
+
+    let synthesizer = null
+
+    function log(message) {
+        const time = new Date().toLocaleTimeString()
+        logEl.textContent += `[${time}] ${message}\n`
+        logEl.scrollTop = logEl.scrollHeight
+    }
+
+    function setStatus(state) {
+        statusEl.textContent = state
+        statusEl.className = `status ${state}`
+    }
+
+    window.speechSynthesis.addEventListener('start', () => {
+        setStatus('speaking')
+        log('event: start')
+    })
+    window.speechSynthesis.addEventListener('end', () => {
+        setStatus('idle')
+        log('event: end')
+    })
+    window.speechSynthesis.addEventListener('pause', () => {
+        setStatus('paused')
+        log('event: pause')
+    })
+    window.speechSynthesis.addEventListener('resume', () => {
+        setStatus('speaking')
+        log('event: resume')
+    })
+    window.speechSynthesis.addEventListener('error', (e) => {
+        setStatus('error')
+        log(`event: error (${e.error})`)
+    })
+    window.speechSynthesis.addEventListener('boundary', (e) => {
+        log(`event: boundary (charIndex=${e.charIndex}, name=${e.name})`)
+    })
+
+    function refreshVoices() {
+        const voices = window.speechSynthesis.getVoices()
+        voiceEl.innerHTML = '<option value="">— default —</option>'
+        const locales = new Set()
+        for (const voice of voices) {
+            const option = document.createElement('option')
+            option.value = voice.lang
+            option.textContent = `${voice.name} (${voice.lang})`
+            voiceEl.appendChild(option)
+            locales.add(voice.lang)
+        }
+        $('locales').innerHTML = ''
+        for (const lang of locales) {
+            const option = document.createElement('option')
+            option.value = lang
+            $('locales').appendChild(option)
+        }
+    }
+
+    refreshVoices()
+    window.speechSynthesis.onvoiceschanged = refreshVoices
+
+    voiceEl.onchange = () => {
+        if (voiceEl.value) {
+            localeEl.value = voiceEl.value
+        }
+    }
+
+    let boundaryCheckTimer = null
+
+    function setBoundarySupport(state, label) {
+        boundarySupportEl.textContent = label
+        boundarySupportEl.className = `status ${state}`
+    }
+
+    $('play').onclick = () => {
+        const mode = $('mode').value
+        const highlighting = $('enableHighlight').checked
+        synthesizer = new Synthesizer(textEl.value, localeEl.value || 'en-US')
+        const wrapped = synthesizer.wrapHtmlTags()
+        wrapEl.textContent = wrapped
+        if (highlighting) {
+            highlightPane.innerHTML = wrapped
+            synthesizer.highlight(highlightPane, {
+                color: highlightColor,
+                fallback: mode === 'boundary' && $('estimateFallback').checked ? 'estimate' : 'none',
+            })
+        }
+        clearTimeout(boundaryCheckTimer)
+        if (mode === 'chunks') {
+            setBoundarySupport('speaking', 'mode: chunks')
+        } else {
+            setBoundarySupport('idle', 'boundary: pending')
+            boundaryCheckTimer = setTimeout(() => {
+                if (boundarySupportEl.textContent !== 'boundary: pending') {
+                    return
+                }
+                if ($('estimateFallback').checked) {
+                    setBoundarySupport('paused', 'boundary: estimate mode')
+                    log('boundary events unavailable — using estimated highlight timing (approximate)')
+                } else {
+                    setBoundarySupport('speaking', 'auto: chunks mode')
+                    log('boundary events unavailable — reading in chunks mode')
+                }
+            }, 3000)
+        }
+        synthesizer.onWordBoundary((e) => {
+            if (e.wordIndex === -1) {
+                clearTimeout(boundaryCheckTimer)
+                setBoundarySupport('idle', 'reading: done')
+                return
+            }
+            if (mode === 'boundary' && boundarySupportEl.textContent !== 'boundary: supported') {
+                clearTimeout(boundaryCheckTimer)
+                setBoundarySupport('speaking', 'boundary: supported')
+            }
+            log(`word ${e.wordIndex + 1}: "${e.word}" (charIndex=${e.charIndex})`)
+        })
+        log(`play() — mode=${mode}, locale=${synthesizer.locale}, text length=${textEl.value.length}`)
+        synthesizer.play({ mode })
+        setTimeout(() => {
+            log(
+                `speechSynthesis state: speaking=${speechSynthesis.speaking} paused=${speechSynthesis.paused}` +
+                    (speechSynthesis.speaking ? '' : ' — speech did not start; no usable voice in this browser?'),
+            )
+        }, 500)
+    }
+
+    $('testBoundary').onclick = () => {
+        const utterance = new SpeechSynthesisUtterance('one two three four five')
+        utterance.lang = localeEl.value || 'en-US'
+        const seen = new Set()
+        const report = (name) => {
+            seen.add(name)
+            if (name === 'end' || name === 'error') {
+                const supported = seen.has('boundary')
+                log(
+                    `boundary test — events seen: [${Array.from(seen).join(', ')}] → ` +
+                        (supported ? 'boundary SUPPORTED (boundary mode works)' : 'boundary NOT supported (use chunks mode)'),
+                )
+            }
+        }
+        utterance.addEventListener('start', () => report('start'))
+        utterance.addEventListener('boundary', () => report('boundary'))
+        utterance.addEventListener('end', () => report('end'))
+        utterance.addEventListener('error', () => report('error'))
+        speechSynthesis.cancel()
+        setTimeout(() => speechSynthesis.speak(utterance), 0)
+        log('boundary test — speaking "one two three four five"')
+    }
+    $('pause').onclick = () => {
+        if (!synthesizer) return
+        log('pause()')
+        synthesizer.pause()
+    }
+    $('resume').onclick = () => {
+        if (!synthesizer) return
+        log('resume()')
+        synthesizer.resume()
+    }
+    $('stop').onclick = () => {
+        if (!synthesizer) return
+        log('stop()')
+        synthesizer.stop()
+        setStatus('idle')
+    }
+</script>
+</body>
+</html>
