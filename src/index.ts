@@ -1,4 +1,4 @@
-export { Synthesizer, computeWordRanges, wordRangeAt, isSupported, HIGHLIGHT_PALETTE } from './Synthesizer'
+export { Synthesizer, computeWordRanges, wordRangeAt, isSupported, getVoices, HIGHLIGHT_PALETTE } from './Synthesizer'
 export type {
     WordRange,
     WordBoundaryEvent,
@@ -7,4 +7,5 @@ export type {
     HighlightColor,
     ReadingMode,
     PlayOptions,
+    SpeechOptions,
 } from './Synthesizer'

@@ -51,8 +51,56 @@ function injectPaletteCSS() {
     document.head.appendChild(style)
 }
 
-export interface PlayOptions {
+export interface SpeechOptions {
+    /** Speaking rate, 0.1–10 (default 1). Also scales the `estimate` fallback timing. */
+    rate?: number
+    /** Pitch, 0–2 (default 1). */
+    pitch?: number
+    /** Volume, 0–1 (default 1). */
+    volume?: number
+    /** A voice from `getVoices()`, or a voice `name` / `voiceURI`. `null` uses the browser default. */
+    voice?: SpeechSynthesisVoice | string | null
+}
+
+export interface PlayOptions extends SpeechOptions {
     mode?: ReadingMode
+}
+
+const VOICES_TIMEOUT_MS = 3000
+
+/**
+ * Resolves with the available voices. Chrome loads voices asynchronously, so
+ * when the list is still empty this waits for `voiceschanged` (up to
+ * `timeoutMs`). Resolves with `[]` when speech synthesis is unsupported.
+ */
+export function getVoices(timeoutMs: number = VOICES_TIMEOUT_MS): Promise<SpeechSynthesisVoice[]> {
+    if (!isSupported()) {
+        return Promise.resolve([])
+    }
+    const voices = speechSynthesis.getVoices()
+    if (voices.length > 0 || typeof speechSynthesis.addEventListener !== 'function') {
+        return Promise.resolve(voices)
+    }
+    return new Promise((resolve) => {
+        const done = () => {
+            clearTimeout(timer)
+            speechSynthesis.removeEventListener('voiceschanged', done)
+            resolve(speechSynthesis.getVoices())
+        }
+        const timer = setTimeout(done, timeoutMs)
+        speechSynthesis.addEventListener('voiceschanged', done)
+    })
+}
+
+function resolveVoice(voice: SpeechSynthesisVoice | string | null | undefined): SpeechSynthesisVoice | null {
+    if (voice === null || voice === undefined) {
+        return null
+    }
+    if (typeof voice !== 'string') {
+        return voice
+    }
+    const voices = isSupported() ? speechSynthesis.getVoices() : []
+    return voices.find((v) => v.voiceURI === voice) ?? voices.find((v) => v.name === voice) ?? null
 }
 
 export function computeWordRanges(text: string): WordRange[] {
@@ -126,6 +174,32 @@ export class Synthesizer {
     static isSupported(): boolean {
         return isSupported()
     }
+
+    /** See the `getVoices()` export. */
+    static getVoices(timeoutMs?: number): Promise<SpeechSynthesisVoice[]> {
+        return getVoices(timeoutMs)
+    }
+
+    /** Update the default speech options used by later `play()` calls. */
+    setOptions(options: SpeechOptions) {
+        this.speechOptions = { ...this.speechOptions, ...options }
+        return this
+    }
+
+    private effectiveSpeechOptions(): SpeechOptions {
+        return { ...this.speechOptions, ...this.playSpeechOptions }
+    }
+
+    private applySpeechOptions(utterance: SpeechSynthesisUtterance) {
+        const { rate, pitch, volume, voice } = this.effectiveSpeechOptions()
+        if (typeof rate === 'number') utterance.rate = rate
+        if (typeof pitch === 'number') utterance.pitch = pitch
+        if (typeof volume === 'number') utterance.volume = volume
+        const resolved = resolveVoice(voice)
+        if (resolved) {
+            utterance.voice = resolved
+        }
+    }
     private session = 0
     private utter: any = null
     private timer: any
@@ -146,7 +220,11 @@ export class Synthesizer {
     private chunkIndex = 0
     private chunkActive = false
 
-    constructor(text: string = '', locale: string = 'en-US') {
+    private speechOptions: SpeechOptions = {}
+    private playSpeechOptions: SpeechOptions = {}
+
+    constructor(text: string = '', locale: string = 'en-US', options: SpeechOptions = {}) {
+        this.speechOptions = { ...options }
         if (this.isHTML(text)) {
             this.text = this.stripHTML(text)
         } else {
@@ -171,7 +249,9 @@ export class Synthesizer {
         speechSynthesis.cancel()
         this.utter = null
         this.resetTracking()
-        const requestedMode = options.mode ?? 'boundary'
+        const { mode, ...speech } = options
+        this.playSpeechOptions = speech
+        const requestedMode = mode ?? 'boundary'
 
         if (requestedMode === 'chunks') {
             this.mode = 'chunks'
@@ -214,6 +294,7 @@ export class Synthesizer {
     private startBoundaryMode() {
         const utterance = new SpeechSynthesisUtterance(this.text)
         utterance.lang = this.locale
+        this.applySpeechOptions(utterance)
         utterance.addEventListener(
             'end',
             () => {
@@ -354,6 +435,7 @@ export class Synthesizer {
         }
         const utterance = new SpeechSynthesisUtterance(range.word)
         utterance.lang = this.locale
+        this.applySpeechOptions(utterance)
         utterance.addEventListener(
             'end',
             () => {
@@ -502,7 +584,9 @@ export class Synthesizer {
         if (this.estimateTimer !== null) {
             return
         }
-        const intervalMs = Math.max(25, Math.round(1000 / this.wordsPerSecond))
+        const rate = this.effectiveSpeechOptions().rate
+        const wordsPerSecond = this.wordsPerSecond * (typeof rate === 'number' && rate > 0 ? rate : 1)
+        const intervalMs = Math.max(25, Math.round(1000 / wordsPerSecond))
         this.estimateTimer = setInterval(() => {
             if (!isSupported() || !speechSynthesis.speaking || speechSynthesis.paused) {
                 return

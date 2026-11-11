@@ -4,6 +4,9 @@ export class FakeUtterance {
     text: string
     lang = ''
     volume = 1
+    rate = 1
+    pitch = 1
+    voice: any = null
     private listeners: Record<string, Array<(e: any) => void>> = {}
 
     constructor(text: string) {
@@ -51,6 +54,9 @@ export interface FakeSpeechSynthesis {
     speak: jest.Mock
     pause: jest.Mock
     resume: jest.Mock
+    getVoices: jest.Mock
+    addEventListener: jest.Mock
+    removeEventListener: jest.Mock
     speaking: boolean
     paused: boolean
 }
@@ -61,6 +67,9 @@ export function installSpeechMock(): FakeSpeechSynthesis {
         speak: jest.fn(),
         pause: jest.fn(),
         resume: jest.fn(),
+        getVoices: jest.fn(() => []),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
         speaking: true,
         paused: false,
     }
