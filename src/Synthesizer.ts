@@ -93,6 +93,18 @@ export function wordRangeAt(ranges: WordRange[], charIndex: number): WordRange |
     return ranges[low]
 }
 
+const HTML_ESCAPES: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+}
+
+function escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch])
+}
+
 const ESTIMATE_GRACE_MS = 1500
 const PROBE_TIMEOUT_MS = 800
 
@@ -464,7 +476,7 @@ export class Synthesizer {
 
     wrapHtmlTags(): string {
         return this.wordRanges
-            .map((range) => `<span class="rsx-${range.index + 1}">${range.word}</span>`)
+            .map((range) => `<span class="rsx-${range.index + 1}">${escapeHtml(range.word)}</span>`)
             .join(' ')
     }
 }
