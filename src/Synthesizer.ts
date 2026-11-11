@@ -144,6 +144,7 @@ export class Synthesizer {
         if (speechSynthesis) {
             speechSynthesis.cancel()
         }
+        this.utter = null
         this.resetTracking()
         const requestedMode = options.mode ?? 'boundary'
 
@@ -194,7 +195,16 @@ export class Synthesizer {
                 if (this.utter !== utterance) {
                     return
                 }
-                clearTimeout(this.timer)
+                this.onFinished()
+            },
+            { passive: true },
+        )
+        utterance.addEventListener(
+            'error',
+            () => {
+                if (this.utter !== utterance) {
+                    return
+                }
                 this.onFinished()
             },
             { passive: true },
@@ -243,15 +253,17 @@ export class Synthesizer {
         probe.lang = this.locale
         probe.volume = 0
         let resolved = false
-        const resolve = (supported: boolean) => {
+        const resolve = (supported: boolean, cache = true) => {
             if (resolved) return
             resolved = true
-            Synthesizer.boundarySupported = supported
+            if (cache) {
+                Synthesizer.boundarySupported = supported
+            }
             callback(supported)
         }
         probe.addEventListener('boundary', () => resolve(true), { passive: true })
         probe.addEventListener('end', () => resolve(false), { passive: true })
-        probe.addEventListener('error', () => resolve(false), { passive: true })
+        probe.addEventListener('error', () => resolve(false, false), { passive: true })
         setTimeout(() => {
             if (!resolved) {
                 speechSynthesis.cancel()
@@ -312,6 +324,24 @@ export class Synthesizer {
                 if (this.utter !== utterance || !this.chunkActive) {
                     return
                 }
+                this.chunkIndex += 1
+                this.speakNextChunk()
+            },
+            { passive: true },
+        )
+        utterance.addEventListener(
+            'error',
+            (e: any) => {
+                if (this.utter !== utterance || !this.chunkActive) {
+                    return
+                }
+                const reason = e && e.error
+                if (reason === 'interrupted' || reason === 'canceled' || reason === 'not-allowed') {
+                    // Speech was cancelled or blocked: the whole read is over.
+                    this.onFinished()
+                    return
+                }
+                // A single word failed to synthesize: skip it rather than stall the queue.
                 this.chunkIndex += 1
                 this.speakNextChunk()
             },
@@ -429,6 +459,8 @@ export class Synthesizer {
     }
 
     private onFinished() {
+        clearTimeout(this.timer)
+        this.utter = null
         this.stopEstimate()
         this.chunkActive = false
         this.applyHighlight(-1)
