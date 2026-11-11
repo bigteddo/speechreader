@@ -16,11 +16,13 @@ describe('environments without speech synthesis', () => {
     it('isSupported() is false and does not throw', () => {
         expect(() => isSupported()).not.toThrow()
         expect(isSupported()).toBe(false)
+        expect(Synthesizer.isSupported()).toBe(false)
     })
 
     it('isSupported() is true once the API exists', () => {
         installSpeechMock()
         expect(isSupported()).toBe(true)
+        expect(Synthesizer.isSupported()).toBe(true)
     })
 
     it.each([undefined, 'chunks'] as const)('play/pause/resume/stop do not throw (mode %s)', (mode) => {

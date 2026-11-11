@@ -77,21 +77,7 @@ describe('utterance error events', () => {
     })
 
     describe('chunks mode', () => {
-        it('skips a word that fails to synthesize instead of stalling', () => {
-            const synth = new Synthesizer('a b c')
-            const events = listen(synth)
-            synth.play({ mode: 'chunks' })
-            jest.advanceTimersByTime(1)
-
-            FakeUtterance.last().fire('end')
-            FakeUtterance.last().fire('error', { error: 'synthesis-failed' })
-            expect(FakeUtterance.last().text).toBe('c')
-            FakeUtterance.last().fire('end')
-
-            expect(events.map((e) => e.wordIndex)).toEqual([0, 1, 2, -1])
-        })
-
-        it.each(['interrupted', 'canceled', 'not-allowed'])('finishes the read on "%s"', (error) => {
+        it.each(['synthesis-failed', 'interrupted', 'canceled'])('stops reading cleanly on "%s"', (error) => {
             const synth = new Synthesizer('a b c')
             const events = listen(synth)
             synth.play({ mode: 'chunks' })

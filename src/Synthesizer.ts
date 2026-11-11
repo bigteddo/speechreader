@@ -121,6 +121,11 @@ let activeInstance: Synthesizer | null = null
 
 export class Synthesizer {
     private static boundarySupported: boolean | null = null
+
+    /** True when the Web Speech synthesis API is available. Never throws. */
+    static isSupported(): boolean {
+        return isSupported()
+    }
     private session = 0
     private utter: any = null
     private timer: any
@@ -362,19 +367,11 @@ export class Synthesizer {
         )
         utterance.addEventListener(
             'error',
-            (e: any) => {
+            () => {
                 if (this.utter !== utterance || !this.chunkActive) {
                     return
                 }
-                const reason = e && e.error
-                if (reason === 'interrupted' || reason === 'canceled' || reason === 'not-allowed') {
-                    // Speech was cancelled or blocked: the whole read is over.
-                    this.onFinished()
-                    return
-                }
-                // A single word failed to synthesize: skip it rather than stall the queue.
-                this.chunkIndex += 1
-                this.speakNextChunk()
+                this.onFinished()
             },
             { passive: true },
         )
