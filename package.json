@@ -22,11 +22,19 @@
   },
   "homepage": "https://github.com/bigteddo/speechreader#readme",
   "keywords": [
+    "text-to-speech",
+    "tts",
+    "speech",
+    "speech-synthesis",
+    "web-speech-api",
+    "read-aloud",
+    "highlight",
+    "accessibility",
+    "a11y",
     "text",
-    "read",
-    "accessibility"
+    "read"
   ],
-  "description": "",
+  "description": "Text-to-speech for the browser: a small wrapper around the Web Speech API with word-by-word highlighting.",
   "devDependencies": {
     "@changesets/cli": "^2.27.2",
     "@eslint/js": "^9.3.0",
