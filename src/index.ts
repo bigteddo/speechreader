@@ -8,4 +8,6 @@ export type {
     ReadingMode,
     PlayOptions,
     SpeechOptions,
+    PlaybackState,
+    StateChangeHandler,
 } from './Synthesizer'

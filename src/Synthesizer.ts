@@ -24,6 +24,24 @@ export interface HighlightOptions {
 
 export type ReadingMode = 'boundary' | 'chunks'
 
+/**
+ * - `playing`: speech started (or resumed)
+ * - `paused`: `pause()` was called while playing
+ * - `stopped`: `stop()` was called, speech was interrupted/cancelled, or another instance took over
+ * - `ended`: the whole text was read
+ * - `error`: the speech engine failed, or speech synthesis is unsupported
+ */
+export type PlaybackState = 'playing' | 'paused' | 'stopped' | 'ended' | 'error'
+
+export type StateChangeHandler = (state: PlaybackState) => void
+
+type FinishReason = 'stopped' | 'ended' | 'error'
+
+function finishReasonForError(e: any): FinishReason {
+    const reason = e && e.error
+    return reason === 'interrupted' || reason === 'canceled' ? 'stopped' : 'error'
+}
+
 export const HIGHLIGHT_PALETTE: Record<HighlightColor, { bg: string; fg: string }> = {
     blue: { bg: '#2563eb', fg: '#ffffff' },
     green: { bg: '#16a34a', fg: '#ffffff' },
@@ -207,6 +225,8 @@ export class Synthesizer {
     locale: string
     private wordRanges: WordRange[]
     private boundaryHandlers = new Set<WordBoundaryHandler>()
+    private stateHandlers = new Set<StateChangeHandler>()
+    private playbackState: PlaybackState = 'stopped'
     private highlightEl: HTMLElement | null = null
     private highlightClassName = 'rsx-highlight'
     private highlightColor: HighlightColor | null = null
@@ -237,7 +257,7 @@ export class Synthesizer {
 
     play(options: PlayOptions = {}) {
         if (!isSupported()) {
-            this.onFinished()
+            this.onFinished('error')
             return
         }
         if (activeInstance !== null && activeInstance !== this) {
@@ -252,6 +272,7 @@ export class Synthesizer {
         const { mode, ...speech } = options
         this.playSpeechOptions = speech
         const requestedMode = mode ?? 'boundary'
+        this.setState('playing')
 
         if (requestedMode === 'chunks') {
             this.mode = 'chunks'
@@ -301,17 +322,17 @@ export class Synthesizer {
                 if (this.utter !== utterance) {
                     return
                 }
-                this.onFinished()
+                this.onFinished('ended')
             },
             { passive: true },
         )
         utterance.addEventListener(
             'error',
-            () => {
+            (e: any) => {
                 if (this.utter !== utterance) {
                     return
                 }
-                this.onFinished()
+                this.onFinished(finishReasonForError(e))
             },
             { passive: true },
         )
@@ -396,6 +417,9 @@ export class Synthesizer {
         if (this.ownsSpeech()) {
             clearTimeout(this.timer)
             speechSynthesis.pause()
+            if (this.playbackState === 'playing') {
+                this.setState('paused')
+            }
         }
     }
 
@@ -404,6 +428,9 @@ export class Synthesizer {
             speechSynthesis.resume()
             if (this.mode === 'boundary') {
                 this.timer = setTimeout(() => this.pauseResumeTimer(), 1000)
+            }
+            if (this.playbackState === 'paused') {
+                this.setState('playing')
             }
         }
     }
@@ -416,7 +443,7 @@ export class Synthesizer {
         }
         this.utter = null
         this.chunkActive = false
-        this.onFinished()
+        this.onFinished('stopped')
     }
 
     /** True when this instance may drive the global speechSynthesis queue. */
@@ -430,7 +457,7 @@ export class Synthesizer {
         }
         const range = this.wordRanges[this.chunkIndex]
         if (!range) {
-            this.onFinished()
+            this.onFinished('ended')
             return
         }
         const utterance = new SpeechSynthesisUtterance(range.word)
@@ -449,11 +476,11 @@ export class Synthesizer {
         )
         utterance.addEventListener(
             'error',
-            () => {
+            (e: any) => {
                 if (this.utter !== utterance || !this.chunkActive) {
                     return
                 }
-                this.onFinished()
+                this.onFinished(finishReasonForError(e))
             },
             { passive: true },
         )
@@ -568,7 +595,7 @@ export class Synthesizer {
         this.applyHighlight(-1)
     }
 
-    private onFinished() {
+    private onFinished(reason: FinishReason) {
         if (activeInstance === this) {
             activeInstance = null
         }
@@ -578,6 +605,36 @@ export class Synthesizer {
         this.chunkActive = false
         this.applyHighlight(-1)
         this.emitBoundary({ wordIndex: -1, word: '', charIndex: 0 })
+        this.setState(reason)
+    }
+
+    private setState(state: PlaybackState) {
+        if (state === this.playbackState) {
+            return
+        }
+        this.playbackState = state
+        this.stateHandlers.forEach((handler) => handler(state))
+    }
+
+    /** Current playback state. */
+    get state(): PlaybackState {
+        return this.playbackState
+    }
+
+    get isPlaying(): boolean {
+        return this.playbackState === 'playing'
+    }
+
+    get isPaused(): boolean {
+        return this.playbackState === 'paused'
+    }
+
+    /** Subscribe to playback state changes. Returns an unsubscribe function. */
+    onStateChange(handler: StateChangeHandler): () => void {
+        this.stateHandlers.add(handler)
+        return () => {
+            this.stateHandlers.delete(handler)
+        }
     }
 
     private startEstimate() {
