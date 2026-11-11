@@ -8,7 +8,10 @@
 
 ### Minor Changes
 
-- Add word highlighting while reading: `onWordBoundary` callback, `highlight(container, options)` with an opt-in `estimate` fallback, `play({ mode: 'chunks' })` to track words via per-word utterances in browsers that do not fire `boundary` events (Firefox, Safari, Linux), and exported `computeWordRanges`/`wordRangeAt` helpers.
+- Word highlighting while reading: `highlight(container, options)` toggles a class on the `rsx-N` span of the word being spoken, with optional `color` presets from the exported `HIGHLIGHT_PALETTE` and an opt-in `estimate` fallback timed by `wordsPerSecond`.
+- `onWordBoundary(handler)` subscribes to `{ wordIndex, word, charIndex }` events, ending with `wordIndex: -1`; it returns an unsubscribe function.
+- Reading modes: `play({ mode: 'boundary' })` (the default) follows the engine's `boundary` events, and `play({ mode: 'chunks' })` speaks one utterance per word for browsers that don't fire them (Firefox, Safari, Linux). With a highlight container bound, the default mode probes for boundary support and falls back to chunks automatically.
+- Exported `computeWordRanges(text)` and `wordRangeAt(ranges, charIndex)` helpers.
 
 ### Patch Changes
 

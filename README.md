@@ -53,6 +53,28 @@ stop text reading
   synthesizer.stop()
 ```
 
+Check for browser support before showing TTS controls. `isSupported()` never
+throws, even where the Web Speech API doesn't exist (SSR, some embedded browsers):
+
+```js
+  import { Synthesizer } from 'speechreader'
+
+  if (Synthesizer.isSupported()) {
+    // show the "read aloud" button
+  }
+```
+
+If speech isn't supported, `play()` does nothing and immediately reports that
+reading has ended (`wordIndex: -1`, see below).
+
+### One reader at a time
+
+The browser has a single speech queue, so only one `Synthesizer` can speak at
+a time. Calling `play()` on one instance stops any other instance that is
+playing: that instance clears its highlight and emits `wordIndex: -1`, so its
+UI resets. Calling `stop()`, `pause()` or `resume()` on an instance that
+isn't playing doesn't affect the one that is.
+
 ## Highlight words while reading
 
 The synthesizer exposes the Web Speech API `boundary` event so the currently
@@ -125,7 +147,9 @@ subscribe to `onWordBoundary`:
 ```js
   const unsubscribe = synthesizer.onWordBoundary((e) => {
     // e = { wordIndex, word, charIndex }
-    // wordIndex is -1 when reading ends
+    // wordIndex is -1 when reading ends: normally, via stop(), on a
+    // speech error (including interruption), or when another instance
+    // starts playing
   })
   unsubscribe() // optional: stop receiving events
 ```
@@ -162,6 +186,16 @@ and can drift, but avoids the choppiness of per-word utterances.
 
 Render the HTML produced by `wrapHtmlTags()` (not your original markup): the
 span numbering must match the text that is actually spoken.
+
+## Security
+
+`wrapHtmlTags()` HTML-escapes every word (`&`, `<`, `>`, `"`, `'`), so from
+**2.0.1** on its output is safe to assign to `innerHTML`, even for imported,
+user-supplied or LLM-generated text.
+
+On **2.0.0**, don't use `wrapHtmlTags()` with untrusted text. HTML input is
+stripped with `DOMParser`, which decodes entities, so `&lt;img onerror=…&gt;`
+became a live `<img>` tag in the output. Upgrade to 2.0.1 or later.
 
 ## Running the examples
 
