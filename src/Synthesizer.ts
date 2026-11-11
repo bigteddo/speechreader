@@ -20,6 +20,12 @@ export interface HighlightOptions {
     color?: HighlightColor
     fallback?: 'none' | 'estimate'
     wordsPerSecond?: number
+    /**
+     * Wrap the words inside the container's existing text nodes instead of
+     * requiring `wrapHtmlTags()` output, so formatting (lists, code, bold…) is
+     * kept. The container's text becomes the text that is read aloud.
+     */
+    inPlace?: boolean
 }
 
 export type ReadingMode = 'boundary' | 'chunks'
@@ -119,6 +125,110 @@ function resolveVoice(voice: SpeechSynthesisVoice | string | null | undefined): 
     }
     const voices = isSupported() ? speechSynthesis.getVoices() : []
     return voices.find((v) => v.voiceURI === voice) ?? voices.find((v) => v.name === voice) ?? null
+}
+
+const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'])
+const BLOCK_TAGS = new Set([
+    'ADDRESS', 'ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'DD', 'DETAILS', 'DIV', 'DL', 'DT', 'FIELDSET',
+    'FIGCAPTION', 'FIGURE', 'FOOTER', 'FORM', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HEADER', 'HR',
+    'LI', 'MAIN', 'NAV', 'OL', 'P', 'PRE', 'SECTION', 'SUMMARY', 'TABLE', 'TBODY', 'TD', 'TFOOT',
+    'TH', 'THEAD', 'TR', 'UL',
+])
+const WORD_ATTR = 'data-rsx-word'
+
+interface TextSegment {
+    node: Text
+    start: number
+}
+
+function blockAncestor(node: Node, root: Element): Node {
+    let el = node.parentElement
+    while (el && el !== root) {
+        if (BLOCK_TAGS.has(el.tagName)) {
+            return el
+        }
+        el = el.parentElement
+    }
+    return root
+}
+
+/** Remove spans added by a previous in-place wrap, restoring plain text nodes. */
+function unwrapWords(root: Element) {
+    root.querySelectorAll(`span[${WORD_ATTR}]`).forEach((span) => {
+        span.replaceWith(root.ownerDocument.createTextNode(span.textContent || ''))
+    })
+    root.normalize()
+}
+
+/**
+ * Collect the readable text nodes of `root` and the text to speak. A space is
+ * inserted between text in different block elements (and around `<br>`), so
+ * `<li>one</li><li>two</li>` reads as two words.
+ */
+function collectText(root: Element): { text: string; segments: TextSegment[] } {
+    const doc = root.ownerDocument
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) =>
+            node.nodeType === Node.ELEMENT_NODE && SKIP_TAGS.has((node as Element).tagName)
+                ? NodeFilter.FILTER_REJECT
+                : NodeFilter.FILTER_ACCEPT,
+    })
+    const segments: TextSegment[] = []
+    let text = ''
+    let prevBlock: Node | null = null
+    let pendingBreak = false
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+            if ((node as Element).tagName === 'BR') {
+                pendingBreak = true
+            }
+            continue
+        }
+        const block = blockAncestor(node, root)
+        const data = (node as Text).data
+        if (text.length > 0 && (pendingBreak || block !== prevBlock) && !/\s$/.test(text) && !/^\s/.test(data)) {
+            text += ' '
+        }
+        segments.push({ node: node as Text, start: text.length })
+        text += data
+        prevBlock = block
+        pendingBreak = false
+    }
+    return { text, segments }
+}
+
+/** Wrap each word piece of each text node in `<span class="rsx-N">`, without touching other markup. */
+function wrapSegments(segments: TextSegment[], ranges: WordRange[]) {
+    let r = 0
+    for (const { node, start } of segments) {
+        const end = start + node.data.length
+        while (r < ranges.length && ranges[r].end <= start) {
+            r += 1
+        }
+        if (r >= ranges.length || ranges[r].start >= end) {
+            continue
+        }
+        const doc = node.ownerDocument
+        const frag = doc.createDocumentFragment()
+        let cursor = 0
+        for (let i = r; i < ranges.length && ranges[i].start < end; i++) {
+            const from = Math.max(ranges[i].start, start) - start
+            const to = Math.min(ranges[i].end, end) - start
+            if (from > cursor) {
+                frag.appendChild(doc.createTextNode(node.data.slice(cursor, from)))
+            }
+            const span = doc.createElement('span')
+            span.className = `rsx-${ranges[i].index + 1}`
+            span.setAttribute(WORD_ATTR, '')
+            span.textContent = node.data.slice(from, to)
+            frag.appendChild(span)
+            cursor = to
+        }
+        if (cursor < node.data.length) {
+            frag.appendChild(doc.createTextNode(node.data.slice(cursor)))
+        }
+        node.replaceWith(frag)
+    }
 }
 
 export function computeWordRanges(text: string): WordRange[] {
@@ -518,6 +628,9 @@ export class Synthesizer {
         if (options.wordsPerSecond) {
             this.wordsPerSecond = options.wordsPerSecond
         }
+        if (container && options.inPlace) {
+            this.wrapInPlace(container)
+        }
         if (container) {
             container.querySelectorAll(`.${this.highlightClassName}`).forEach((el) => {
                 el.classList.remove(this.highlightClassName)
@@ -526,6 +639,18 @@ export class Synthesizer {
         }
         this.applyHighlight(this.currentWordIndex, true)
         return this
+    }
+
+    private wrapInPlace(container: HTMLElement) {
+        if (this.playbackState === 'playing' || this.playbackState === 'paused') {
+            this.stop()
+        }
+        unwrapWords(container)
+        const { text, segments } = collectText(container)
+        this.text = text
+        this.wordRanges = computeWordRanges(text)
+        this.currentWordIndex = -1
+        wrapSegments(segments, this.wordRanges)
     }
 
     private highlightColorClass(): string | null {
@@ -568,22 +693,21 @@ export class Synthesizer {
         }
         const el = this.highlightEl
         if (el) {
+            // A word can be split across several spans when it crosses inline markup (in-place mode).
             if (this.currentWordIndex >= 0) {
-                const prev = el.querySelector(`.rsx-${this.currentWordIndex + 1}`) as HTMLElement | null
-                if (prev) {
+                el.querySelectorAll(`.rsx-${this.currentWordIndex + 1}`).forEach((prev) => {
                     prev.classList.remove(this.highlightClassName)
-                    this.clearAllColorModifiers(prev)
-                }
+                    this.clearAllColorModifiers(prev as HTMLElement)
+                })
             }
             if (index >= 0) {
-                const next = el.querySelector(`.rsx-${index + 1}`) as HTMLElement | null
-                if (next) {
+                const colorClass = this.highlightColorClass()
+                el.querySelectorAll(`.rsx-${index + 1}`).forEach((next) => {
                     next.classList.add(this.highlightClassName)
-                    const colorClass = this.highlightColorClass()
                     if (colorClass) {
                         next.classList.add(colorClass)
                     }
-                }
+                })
             }
         }
         this.currentWordIndex = index
