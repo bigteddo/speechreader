@@ -105,6 +105,14 @@ function escapeHtml(value: string): string {
     return value.replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch])
 }
 
+/**
+ * True when the Web Speech synthesis API is available. Safe to call in any
+ * environment (SSR, workers, browsers without speech support).
+ */
+export function isSupported(): boolean {
+    return typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined'
+}
+
 const ESTIMATE_GRACE_MS = 1500
 const PROBE_TIMEOUT_MS = 800
 
@@ -141,9 +149,11 @@ export class Synthesizer {
     }
 
     play(options: PlayOptions = {}) {
-        if (speechSynthesis) {
-            speechSynthesis.cancel()
+        if (!isSupported()) {
+            this.onFinished()
+            return
         }
+        speechSynthesis.cancel()
         this.utter = null
         this.resetTracking()
         const requestedMode = options.mode ?? 'boundary'
@@ -221,7 +231,7 @@ export class Synthesizer {
         )
         this.utter = utterance
         setTimeout(() => {
-            if (this.utter === utterance) {
+            if (this.utter === utterance && isSupported()) {
                 speechSynthesis.speak(utterance)
             }
         }, 0)
@@ -232,7 +242,7 @@ export class Synthesizer {
             if (this.receivedBoundary || !this.utter) {
                 return
             }
-            if (!speechSynthesis || !speechSynthesis.speaking) {
+            if (!isSupported() || !speechSynthesis.speaking) {
                 return
             }
             this.startEstimate()
@@ -244,7 +254,7 @@ export class Synthesizer {
             callback(Synthesizer.boundarySupported)
             return
         }
-        if (!speechSynthesis) {
+        if (!isSupported()) {
             Synthesizer.boundarySupported = false
             callback(false)
             return
@@ -274,22 +284,27 @@ export class Synthesizer {
     }
 
     private pauseResumeTimer() {
+        if (!isSupported()) {
+            return
+        }
         speechSynthesis.pause()
         setTimeout(() => {
-            speechSynthesis.resume()
+            if (isSupported()) {
+                speechSynthesis.resume()
+            }
         }, 0)
         this.timer = setTimeout(() => this.pauseResumeTimer(), 10000)
     }
 
     pause() {
-        if (speechSynthesis) {
+        if (isSupported()) {
             clearTimeout(this.timer)
             speechSynthesis.pause()
         }
     }
 
     resume() {
-        if (speechSynthesis) {
+        if (isSupported()) {
             speechSynthesis.resume()
             if (this.mode === 'boundary') {
                 this.timer = setTimeout(() => this.pauseResumeTimer(), 1000)
@@ -298,7 +313,7 @@ export class Synthesizer {
     }
 
     stop() {
-        if (speechSynthesis) {
+        if (isSupported()) {
             clearTimeout(this.timer)
             speechSynthesis.cancel()
         }
@@ -473,7 +488,7 @@ export class Synthesizer {
         }
         const intervalMs = Math.max(25, Math.round(1000 / this.wordsPerSecond))
         this.estimateTimer = setInterval(() => {
-            if (!speechSynthesis || !speechSynthesis.speaking || speechSynthesis.paused) {
+            if (!isSupported() || !speechSynthesis.speaking || speechSynthesis.paused) {
                 return
             }
             const next = this.currentWordIndex + 1
