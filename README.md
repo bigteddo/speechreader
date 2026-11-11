@@ -270,12 +270,12 @@ span numbering must match the text that is actually spoken.
 ## Security
 
 `wrapHtmlTags()` HTML-escapes every word (`&`, `<`, `>`, `"`, `'`), so from
-**2.0.1** on its output is safe to assign to `innerHTML`, even for imported,
+**2.1.0** on its output is safe to assign to `innerHTML`, even for imported,
 user-supplied or LLM-generated text.
 
 On **2.0.0**, don't use `wrapHtmlTags()` with untrusted text. HTML input is
 stripped with `DOMParser`, which decodes entities, so `&lt;img onerror=…&gt;`
-became a live `<img>` tag in the output. Upgrade to 2.0.1 or later.
+became a live `<img>` tag in the output. Upgrade to 2.1.0 or later.
 
 ## Running the examples
 
