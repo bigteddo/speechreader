@@ -116,8 +116,12 @@ export function isSupported(): boolean {
 const ESTIMATE_GRACE_MS = 1500
 const PROBE_TIMEOUT_MS = 800
 
+// speechSynthesis is a single global queue: only one instance can be speaking.
+let activeInstance: Synthesizer | null = null
+
 export class Synthesizer {
     private static boundarySupported: boolean | null = null
+    private session = 0
     private utter: any = null
     private timer: any
     private text: string
@@ -153,6 +157,12 @@ export class Synthesizer {
             this.onFinished()
             return
         }
+        if (activeInstance !== null && activeInstance !== this) {
+            // Tell the instance being taken over, so it clears its highlight and emits -1.
+            activeInstance.stop()
+        }
+        activeInstance = this
+        const session = ++this.session
         speechSynthesis.cancel()
         this.utter = null
         this.resetTracking()
@@ -177,7 +187,7 @@ export class Synthesizer {
         }
 
         this.probeBoundarySupport((supported) => {
-            if (this.utter !== null) {
+            if (session !== this.session || this.utter !== null) {
                 return
             }
             if (supported || this.fallback === 'estimate') {
@@ -297,14 +307,14 @@ export class Synthesizer {
     }
 
     pause() {
-        if (isSupported()) {
+        if (this.ownsSpeech()) {
             clearTimeout(this.timer)
             speechSynthesis.pause()
         }
     }
 
     resume() {
-        if (isSupported()) {
+        if (this.ownsSpeech()) {
             speechSynthesis.resume()
             if (this.mode === 'boundary') {
                 this.timer = setTimeout(() => this.pauseResumeTimer(), 1000)
@@ -313,13 +323,19 @@ export class Synthesizer {
     }
 
     stop() {
-        if (isSupported()) {
-            clearTimeout(this.timer)
+        this.session += 1
+        clearTimeout(this.timer)
+        if (this.ownsSpeech()) {
             speechSynthesis.cancel()
         }
         this.utter = null
         this.chunkActive = false
         this.onFinished()
+    }
+
+    /** True when this instance may drive the global speechSynthesis queue. */
+    private ownsSpeech(): boolean {
+        return isSupported() && (activeInstance === null || activeInstance === this)
     }
 
     private speakNextChunk() {
@@ -474,6 +490,9 @@ export class Synthesizer {
     }
 
     private onFinished() {
+        if (activeInstance === this) {
+            activeInstance = null
+        }
         clearTimeout(this.timer)
         this.utter = null
         this.stopEstimate()
